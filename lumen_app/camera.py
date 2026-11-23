@@ -89,7 +89,7 @@ def download_model(progress: Optional[Callable[[str], None]] = None) -> str:
 # Detector back-ends
 # ----------------------------------------------------------------------------
 class _LegacyDetector:
-    def detect_all(self, rgb: np.ndarray, ts_ms: int) -> list:
+        def detect_all(self, rgb: np.ndarray, ts_ms: int) -> list:
         res = self._hands.process(rgb)
         if not res.multi_hand_landmarks:
             return []
@@ -119,35 +119,41 @@ class _LegacyDetector:
         hands = self.detect_all(rgb, ts_ms)
         return hands[0]["landmarks"] if hands else None
 
-
 class _TasksDetector:
-    def __init__(self, mp, model_path: str):
-        from mediapipe.tasks import python as mp_tasks
-        from mediapipe.tasks.python import vision as mp_vision
-
-        self._mp = mp
-        with open(model_path, "rb") as fh:          # buffer avoids unicode-path problems
-            buffer = fh.read()
-        options = mp_vision.HandLandmarkerOptions(
-            base_options=mp_tasks.BaseOptions(model_asset_buffer=buffer),
-            running_mode=mp_vision.RunningMode.VIDEO,
-            num_hands=2,
-            min_hand_detection_confidence=C.DETECT_CONFIDENCE,
-            min_hand_presence_confidence=C.PRESENCE_CONFIDENCE,
-            min_tracking_confidence=C.TRACKING_CONFIDENCE,
+    def detect_all(self, rgb: np.ndarray, ts_ms: int) -> list:
+        image = self._mp.Image(
+            image_format=self._mp.ImageFormat.SRGB,
+            data=np.ascontiguousarray(rgb),
         )
-        self._lm = mp_vision.HandLandmarker.create_from_options(options)
+        res = self._lm.detect_for_video(image, ts_ms)
+
+        if not res.hand_landmarks:
+            return []
+
+        hands = []
+
+        for i, hand_landmarks in enumerate(res.hand_landmarks):
+            landmarks = np.array(
+                [[p.x, p.y, p.z] for p in hand_landmarks],
+                dtype=np.float32,
+            )
+
+            label = "Unknown"
+            if res.handedness and i < len(res.handedness):
+                categories = res.handedness[i]
+                if categories:
+                    label = categories[0].category_name
+
+            hands.append({
+                "label": label,
+                "landmarks": landmarks,
+            })
+
+        return hands
 
     def detect(self, rgb: np.ndarray, ts_ms: int) -> Optional[np.ndarray]:
-        image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-        res = self._lm.detect_for_video(image, ts_ms)
-        if not res.hand_landmarks:
-            return None
-        return np.array([[p.x, p.y, p.z] for p in res.hand_landmarks[0]], dtype=np.float32)
-
-    def close(self):
-        self._lm.close()
-
+        hands = self.detect_all(rgb, ts_ms)
+        return hands[0]["landmarks"] if hands else None
 
 def create_detector(progress: Callable[[str], None], model_override: Optional[str] = None):
     import mediapipe as mp          # heavy import: done on the worker thread
