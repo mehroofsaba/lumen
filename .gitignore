@@ -27,3 +27,8 @@ Thumbs.db
 
 # Logs
 *.log
+# LUMEN generated artwork
+lumen_*.png
+
+# Downloaded MediaPipe model
+models/hand_landmarker.task

@@ -41,8 +41,8 @@ ACTIVE_MARGIN_Y = 0.16
 #   min_cutoff  lower  = smoother when moving slowly (less jitter)
 #   beta        higher = less lag when moving fast
 # --------------------------------------------------------------------------
-SMOOTH_MIN_CUTOFF = 1.4
-SMOOTH_BETA = 0.015
+SMOOTH_MIN_CUTOFF = 2.8
+SMOOTH_BETA = 0.02
 SMOOTH_D_CUTOFF = 1.0
 
 # Longest hop (as a fraction of the screen diagonal) that still counts as the

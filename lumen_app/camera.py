@@ -89,22 +89,35 @@ def download_model(progress: Optional[Callable[[str], None]] = None) -> str:
 # Detector back-ends
 # ----------------------------------------------------------------------------
 class _LegacyDetector:
-    def __init__(self, mp):
-        self._hands = mp.solutions.hands.Hands(
-            static_image_mode=False, max_num_hands=1, model_complexity=1,
-            min_detection_confidence=C.DETECT_CONFIDENCE,
-            min_tracking_confidence=C.TRACKING_CONFIDENCE,
-        )
-
-    def detect(self, rgb: np.ndarray, ts_ms: int) -> Optional[np.ndarray]:
+    def detect_all(self, rgb: np.ndarray, ts_ms: int) -> list:
         res = self._hands.process(rgb)
         if not res.multi_hand_landmarks:
-            return None
-        lm = res.multi_hand_landmarks[0].landmark
-        return np.array([[p.x, p.y, p.z] for p in lm], dtype=np.float32)
+            return []
 
-    def close(self):
-        self._hands.close()
+        hands = []
+
+        for i, hand_landmarks in enumerate(res.multi_hand_landmarks):
+            landmarks = np.array(
+                [[p.x, p.y, p.z] for p in hand_landmarks.landmark],
+                dtype=np.float32,
+            )
+
+            label = "Unknown"
+            if res.multi_handedness and i < len(res.multi_handedness):
+                classification = res.multi_handedness[i].classification
+                if classification:
+                    label = classification[0].label
+
+            hands.append({
+                "label": label,
+                "landmarks": landmarks,
+            })
+
+        return hands
+
+    def detect(self, rgb: np.ndarray, ts_ms: int) -> Optional[np.ndarray]:
+        hands = self.detect_all(rgb, ts_ms)
+        return hands[0]["landmarks"] if hands else None
 
 
 class _TasksDetector:
@@ -118,7 +131,7 @@ class _TasksDetector:
         options = mp_vision.HandLandmarkerOptions(
             base_options=mp_tasks.BaseOptions(model_asset_buffer=buffer),
             running_mode=mp_vision.RunningMode.VIDEO,
-            num_hands=1,
+            num_hands=2,
             min_hand_detection_confidence=C.DETECT_CONFIDENCE,
             min_hand_presence_confidence=C.PRESENCE_CONFIDENCE,
             min_tracking_confidence=C.TRACKING_CONFIDENCE,
@@ -164,10 +177,11 @@ def create_detector(progress: Callable[[str], None], model_override: Optional[st
 @dataclass
 class Observation:
     seq: int = 0
-    t: float = 0.0                              # time.perf_counter() when captured
-    landmarks: Optional[np.ndarray] = None      # (21, 3) normalised, mirrored view
-    preview: Optional[np.ndarray] = None        # small RGB frame with skeleton
+    t: float = 0.0
+    landmarks: Optional[np.ndarray] = None
+    preview: Optional[np.ndarray] = None
     aspect: float = 4 / 3
+    hands: Optional[list] = None
 
 
 class CameraWorker(threading.Thread):
