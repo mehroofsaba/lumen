@@ -89,8 +89,18 @@ def download_model(progress: Optional[Callable[[str], None]] = None) -> str:
 # Detector back-ends
 # ----------------------------------------------------------------------------
 class _LegacyDetector:
-        def detect_all(self, rgb: np.ndarray, ts_ms: int) -> list:
+    def __init__(self, mp):
+        self._hands = mp.solutions.hands.Hands(
+            static_image_mode=False,
+            max_num_hands=2,
+            model_complexity=1,
+            min_detection_confidence=C.DETECT_CONFIDENCE,
+            min_tracking_confidence=C.TRACKING_CONFIDENCE,
+        )
+
+    def detect_all(self, rgb: np.ndarray, ts_ms: int) -> list:
         res = self._hands.process(rgb)
+
         if not res.multi_hand_landmarks:
             return []
 
@@ -119,12 +129,37 @@ class _LegacyDetector:
         hands = self.detect_all(rgb, ts_ms)
         return hands[0]["landmarks"] if hands else None
 
+    def close(self):
+        self._hands.close()
+
+
 class _TasksDetector:
+    def __init__(self, mp, model_path: str):
+        from mediapipe.tasks import python as mp_tasks
+        from mediapipe.tasks.python import vision as mp_vision
+
+        self._mp = mp
+
+        with open(model_path, "rb") as fh:
+            buffer = fh.read()
+
+        options = mp_vision.HandLandmarkerOptions(
+            base_options=mp_tasks.BaseOptions(model_asset_buffer=buffer),
+            running_mode=mp_vision.RunningMode.VIDEO,
+            num_hands=2,
+            min_hand_detection_confidence=C.DETECT_CONFIDENCE,
+            min_hand_presence_confidence=C.PRESENCE_CONFIDENCE,
+            min_tracking_confidence=C.TRACKING_CONFIDENCE,
+        )
+
+        self._lm = mp_vision.HandLandmarker.create_from_options(options)
+
     def detect_all(self, rgb: np.ndarray, ts_ms: int) -> list:
         image = self._mp.Image(
             image_format=self._mp.ImageFormat.SRGB,
             data=np.ascontiguousarray(rgb),
         )
+
         res = self._lm.detect_for_video(image, ts_ms)
 
         if not res.hand_landmarks:
@@ -154,6 +189,10 @@ class _TasksDetector:
     def detect(self, rgb: np.ndarray, ts_ms: int) -> Optional[np.ndarray]:
         hands = self.detect_all(rgb, ts_ms)
         return hands[0]["landmarks"] if hands else None
+
+    def close(self):
+        self._lm.close()
+
 
 def create_detector(progress: Callable[[str], None], model_override: Optional[str] = None):
     import mediapipe as mp          # heavy import: done on the worker thread
@@ -241,16 +280,44 @@ class CameraWorker(threading.Thread):
     def _fail(self, message: str) -> None:
         self._set("error", message)
 
-    def _make_preview(self, rgb: np.ndarray, lm: Optional[np.ndarray]) -> np.ndarray:
+    def _make_preview(self, rgb: np.ndarray, hands: list) -> np.ndarray:
         pw, ph = C.PREVIEW_SIZE
         small = cv2.resize(rgb, (pw, ph), interpolation=cv2.INTER_AREA)
-        if lm is not None:
+
+        colors = {
+            "Left": (255, 180, 120),
+            "Right": (180, 220, 255),
+            "Unknown": (255, 214, 140),
+        }
+
+        for hand in hands:
+            lm = hand["landmarks"]
+            label = hand["label"]
+            color = colors.get(label, colors["Unknown"])
+
             pts = [(int(x * pw), int(y * ph)) for x, y, _ in lm]
+
             for a, b in HAND_CONNECTIONS:
-                cv2.line(small, pts[a], pts[b], (255, 214, 140), 1, cv2.LINE_AA)
-            for i, pt in enumerate(pts):
+                cv2.line(small, pts[a], pts[b], color, 2, cv2.LINE_AA)
+
+            for pt in pts:
                 cv2.circle(small, pt, 2, (255, 255, 255), -1, cv2.LINE_AA)
-            cv2.circle(small, pts[8], 6, (255, 120, 220), 2, cv2.LINE_AA)   # index fingertip
+
+            cv2.circle(
+                small, pts[8], 6, (255, 120, 220), 2, cv2.LINE_AA
+            )
+
+            cv2.putText(
+                small,
+                label,
+                (pts[0][0], max(15, pts[0][1] - 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
+
         return small
 
     def run(self) -> None:
@@ -286,10 +353,22 @@ class CameraWorker(threading.Thread):
                     ts = last_ts + 1
                 last_ts = ts
 
-                lm = detector.detect(rgb, ts)
-                preview = self._make_preview(rgb, lm)
+                hands = detector.detect_all(rgb, ts)
+
+                # Keep the first hand available for the existing single-hand engine.
+                lm = hands[0]["landmarks"] if hands else None
+
+                preview = self._make_preview(rgb, hands)
+
                 seq += 1
-                obs = Observation(seq, time.perf_counter(), lm, preview, rgb.shape[1] / rgb.shape[0])
+                obs = Observation(
+                    seq=seq,
+                    t=time.perf_counter(),
+                    landmarks=lm,
+                    preview=preview,
+                    aspect=rgb.shape[1] / rgb.shape[0],
+                    hands=hands,
+                )
                 with self._lock:
                     self._obs = obs
 

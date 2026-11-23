@@ -25,16 +25,49 @@ class Mode(Enum):
     PERMANENT = "permanent"   # drawings stay and keep shimmering until cleared
     FLEETING = "fleeting"     # trails fade away like real fairy dust
 
+class HandState:
+    """Independent tracking and drawing state for one hand."""
+
+    def __init__(self):
+        self.gestures = GestureEngine()
+        self.tip_filter = OneEuroFilter(
+            C.SMOOTH_MIN_CUTOFF,
+            C.SMOOTH_BETA,
+            C.SMOOTH_D_CUTOFF,
+        )
+        self.palm_filter = OneEuroFilter(
+            C.SMOOTH_MIN_CUTOFF,
+            C.SMOOTH_BETA,
+            C.SMOOTH_D_CUTOFF,
+        )
+        self.stroke = StrokeBuilder(C.TRAIL_SPACING)
+
+        self.cursor = None
+        self.cursor_vel = np.zeros(2)
+        self.palm = None
+
+        self.visible = False
+        self.gesture = Gesture.NONE
+        self.fist_progress = 0.0
+        self.drawing = False
+        self.last_obs_t = None
+        self.last_obs_time = -1e9
 
 class LumenEngine:
     def __init__(self, size=C.WINDOW_SIZE, seed: Optional[int] = None):
         self.w, self.h = int(size[0]), int(size[1])
         self.rng = np.random.default_rng(seed)
-
-        self.gestures = GestureEngine()
-        self.tip_filter = OneEuroFilter(C.SMOOTH_MIN_CUTOFF, C.SMOOTH_BETA, C.SMOOTH_D_CUTOFF)
-        self.palm_filter = OneEuroFilter(C.SMOOTH_MIN_CUTOFF, C.SMOOTH_BETA, C.SMOOTH_D_CUTOFF)
-        self.stroke = StrokeBuilder(C.TRAIL_SPACING)
+        self._multi_hand_input = False
+        self.hands = {
+            "Left": HandState(),
+            "Right": HandState(),
+}
+# Temporary compatibility bridge for the existing single-hand pipeline.
+        right_hand = self.hands["Right"]
+        self.gestures = right_hand.gestures
+        self.tip_filter = right_hand.tip_filter
+        self.palm_filter = right_hand.palm_filter
+        self.stroke = right_hand.stroke
         self.particles = ParticleSystem(C.MAX_PARTICLES + C.MAX_ANCHORS + 400, seed=seed)
 
         self.mode = Mode(C.DEFAULT_MODE)
@@ -70,7 +103,16 @@ class LumenEngine:
 
     @property
     def is_paused(self) -> bool:
-        held = C.PINCH_MODE == "hold" and self.gesture == Gesture.PINCH
+        held = C.PINCH_MODE == "hold" and (
+            self.gesture == Gesture.PINCH
+            or (
+                self._multi_hand_input
+                and any(
+                    hand.visible and hand.gesture == Gesture.PINCH
+                    for hand in self.hands.values()
+                )
+            )
+        )
         return self.paused or held
 
     # ------------------------------------------------------------------
@@ -132,6 +174,7 @@ class LumenEngine:
 
     def feed_hand(self, landmarks: Optional[np.ndarray], t: float, aspect: Optional[float] = None) -> None:
         """Camera observation. `landmarks` is (21, 3) normalised, or None if no hand."""
+        self._multi_hand_input = False
         if landmarks is None:
             return    # the hand-lost grace timer in update() takes care of this
         if aspect:
@@ -152,6 +195,84 @@ class LumenEngine:
         palm_s = self.palm_filter(palm, t)
         state = self.gestures.update(landmarks, t)
         self._apply(state, tip_s, palm_s, t)
+
+    
+    def feed_hands(self, hands: list, t: float, aspect: Optional[float] = None) -> None:
+        """Process independently tracked left and right hands."""
+        self._multi_hand_input = True
+        for item in hands:
+            label = item.get("label")
+            if label not in self.hands:
+                continue
+
+            hand = self.hands[label]
+            landmarks = np.asarray(item["landmarks"])
+
+            if aspect:
+                hand.gestures.aspect = float(aspect)
+
+            tip = self._to_canvas(landmarks[8][:2])
+            palm = self._to_canvas(
+                landmarks[[0, 5, 9, 13, 17], :2].mean(axis=0)
+            )
+
+            if not hand.visible:
+                hand.tip_filter.reset()
+                hand.palm_filter.reset()
+                hand.gestures.reset()
+                hand.last_obs_t = None
+                hand.cursor_vel[:] = 0.0
+
+            hand.visible = True
+            hand.last_obs_time = t
+
+            tip_s = hand.tip_filter(tip, t)
+            palm_s = hand.palm_filter(palm, t)
+            state = hand.gestures.update(landmarks, t)
+
+            hand.gesture = state.gesture
+            hand.fist_progress = state.fist_progress
+
+            for ev in state.events:
+                if ev == "toggle_pause":
+                    self.toggle_pause()
+                elif ev == "cycle_effect":
+                    self.cycle_effect()
+                elif ev == "clear":
+                    self.clear()
+
+            if hand.last_obs_t is not None and t > hand.last_obs_t:
+                inst = (tip_s - hand.cursor) / (t - hand.last_obs_t)
+                hand.cursor_vel = 0.6 * hand.cursor_vel + 0.4 * inst
+
+            hand.last_obs_t = t
+            hand.cursor = tip_s
+            hand.palm = palm_s
+
+            if state.gesture == Gesture.DRAW and not self.is_paused:
+                self._draw_to(tip_s, hand=hand)
+            else:
+                self._end_stroke(hand=hand)
+
+        self.hand_visible = any(h.visible for h in self.hands.values())
+        self.drawing = any(h.drawing for h in self.hands.values())
+
+        # Keep the renderer's existing single-cursor interface compatible.
+        active = next(
+            (self.hands[name] for name in ("Right", "Left")
+             if self.hands[name].visible),
+            None,
+        )
+
+        if active is not None:
+            self.cursor = active.cursor
+            self.cursor_vel = active.cursor_vel
+            self.palm = active.palm
+            self.gesture = active.gesture
+            self.fist_progress = active.fist_progress
+            self._last_obs_time = max(
+                h.last_obs_time for h in self.hands.values() if h.visible
+            )
 
     def feed_pointer(self, pos, gesture: Gesture, t: float) -> None:
         """Mouse / fallback input: `pos` in canvas pixels, or None if idle."""
@@ -189,6 +310,17 @@ class LumenEngine:
         else:
             self._end_stroke()
 
+    def _lose_tracked_hand(self, hand: HandState) -> None:
+        hand.visible = False
+        hand.gesture = Gesture.NONE
+        hand.fist_progress = 0.0
+        hand.cursor_vel[:] = 0.0
+        hand.last_obs_t = None
+        self._end_stroke(hand=hand)
+
+        self.hand_visible = any(state.visible for state in self.hands.values())
+        self.drawing = any(state.drawing for state in self.hands.values())
+
     def _lose_hand(self) -> None:
         self.hand_visible = False
         self.gesture = Gesture.NONE
@@ -199,22 +331,48 @@ class LumenEngine:
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
-    def _draw_to(self, p: np.ndarray) -> None:
-        if self.stroke.active and self.drawing:
-            last = self.stroke._pts[-1]
+    def _draw_to(self, p: np.ndarray, hand: Optional[HandState] = None) -> None:
+        stroke = hand.stroke if hand is not None else self.stroke
+        is_drawing = hand.drawing if hand is not None else self.drawing
+        cursor_vel = hand.cursor_vel if hand is not None else self.cursor_vel
+
+        if stroke.active and is_drawing:
+            last = stroke._pts[-1]
             if float(np.linalg.norm(p - last)) > C.MAX_STROKE_JUMP * math.hypot(self.w, self.h):
-                self.stroke.reset()           # tracking glitch: don't draw a long line
+                stroke.reset()
+
+        if hand is not None:
+            hand.drawing = True
         self.drawing = True
         self.has_drawn = True
-        pts, arcs = self.stroke.add(p)
-        if len(pts):
-            self._emit_trail(pts, arcs)
 
-    def _end_stroke(self) -> None:
+        pts, arcs = stroke.add(p)
+        if len(pts):
+            self._emit_trail(pts, arcs, cursor_vel=cursor_vel)
+
+    def _end_stroke(self, hand: Optional[HandState] = None) -> None:
+        if hand is not None:
+            hand.drawing = False
+            hand.stroke.reset()
+            self.drawing = any(state.drawing for state in self.hands.values())
+            return
+
+        for state in self.hands.values():
+            state.drawing = False
+            state.stroke.reset()
+
         self.drawing = False
         self.stroke.reset()
 
-    def _emit_trail(self, pts: np.ndarray, arcs: np.ndarray) -> None:
+    def _emit_trail(
+        self,
+        pts: np.ndarray,
+        arcs: np.ndarray,
+        cursor_vel=None,
+    ) -> None:
+        if cursor_vel is None:
+            cursor_vel = self.cursor_vel
+
         fx = self.effect
         rng = self.rng
         m = len(pts)
@@ -228,7 +386,7 @@ class LumenEngine:
             pos = base + rng.normal(0, 2.2, (total, 2))
             ang = rng.uniform(0, TWO_PI, total)
             spd = np.abs(rng.normal(fx.speed, fx.speed * 0.5, total))
-            vel = np.stack([np.cos(ang), np.sin(ang)], axis=1) * spd[:, None] + self.cursor_vel * 0.06
+            vel = np.stack([np.cos(ang), np.sin(ang)], axis=1) * spd[:, None] + cursor_vel * 0.06
             self._spawn(pos, vel, cols)
 
         if self.mode == Mode.PERMANENT:
@@ -277,23 +435,86 @@ class LumenEngine:
         dt = min(max(dt, 0.0), 0.05)
         self.t += dt
 
-        if self.hand_visible and now - self._last_obs_time > C.HAND_LOST_GRACE:
-            self._lose_hand()
+        if self._multi_hand_input:
+            # Each hand has its own timeout and particle behaviour.
+            for hand in self.hands.values():
+                if hand.visible and now - hand.last_obs_time > C.HAND_LOST_GRACE:
+                    self._lose_tracked_hand(hand)
 
-        if self.hand_visible:
-            self.cursor_vel *= math.exp(-dt * 2.5)
+                if not hand.visible:
+                    continue
 
-            if self.gesture == Gesture.PALM:
-                n = int(self.rng.poisson(C.SCATTER_RATE * dt))
-                self._burst(self.palm, n, power=230.0)
-            elif (self.drawing and not self.is_paused
-                  and float(np.linalg.norm(self.cursor_vel)) < 40.0):
-                n = int(self.rng.poisson(C.IDLE_DUST_RATE * dt))
-                if n:
-                    pos = self.cursor + self.rng.normal(0, 3.0, (n, 2))
-                    ang = self.rng.uniform(0, TWO_PI, n)
-                    vel = np.stack([np.cos(ang), np.sin(ang)], axis=1) * 18.0
-                    self._spawn(pos, vel, pick_colors(self.effect, self.rng.uniform(0, 2000, n), self.t, self.rng))
+                hand.cursor_vel *= math.exp(-dt * 2.5)
+
+                if hand.gesture == Gesture.PALM:
+                    n = int(self.rng.poisson(C.SCATTER_RATE * dt))
+                    self._burst(hand.palm, n, power=230.0)
+
+                elif (
+                    hand.drawing
+                    and not self.is_paused
+                    and float(np.linalg.norm(hand.cursor_vel)) < 40.0
+                ):
+                    n = int(self.rng.poisson(C.IDLE_DUST_RATE * dt))
+                    if n:
+                        pos = hand.cursor + self.rng.normal(0, 3.0, (n, 2))
+                        ang = self.rng.uniform(0, TWO_PI, n)
+                        vel = np.stack([np.cos(ang), np.sin(ang)], axis=1) * 18.0
+                        colors = pick_colors(
+                            self.effect,
+                            self.rng.uniform(0, 2000, n),
+                            self.t,
+                            self.rng,
+                        )
+                        self._spawn(pos, vel, colors)
+
+            self.hand_visible = any(h.visible for h in self.hands.values())
+            self.drawing = any(h.drawing for h in self.hands.values())
+
+            active = next(
+                (self.hands[name] for name in ("Right", "Left")
+                 if self.hands[name].visible),
+                None,
+            )
+
+            if active is not None:
+                self.cursor = active.cursor
+                self.cursor_vel = active.cursor_vel
+                self.palm = active.palm
+                self.gesture = active.gesture
+                self.fist_progress = active.fist_progress
+            else:
+                self.gesture = Gesture.NONE
+                self.fist_progress = 0.0
+
+        else:
+            # Original single-hand behaviour.
+            if self.hand_visible and now - self._last_obs_time > C.HAND_LOST_GRACE:
+                self._lose_hand()
+
+            if self.hand_visible:
+                self.cursor_vel *= math.exp(-dt * 2.5)
+
+                if self.gesture == Gesture.PALM:
+                    n = int(self.rng.poisson(C.SCATTER_RATE * dt))
+                    self._burst(self.palm, n, power=230.0)
+                elif (self.drawing and not self.is_paused
+                      and float(np.linalg.norm(self.cursor_vel)) < 40.0):
+                    n = int(self.rng.poisson(C.IDLE_DUST_RATE * dt))
+                    if n:
+                        pos = self.cursor + self.rng.normal(0, 3.0, (n, 2))
+                        ang = self.rng.uniform(0, TWO_PI, n)
+                        vel = np.stack([np.cos(ang), np.sin(ang)], axis=1) * 18.0
+                        self._spawn(
+                            pos,
+                            vel,
+                            pick_colors(
+                                self.effect,
+                                self.rng.uniform(0, 2000, n),
+                                self.t,
+                                self.rng,
+                            ),
+                        )
 
         self.particles.update(dt, self.t, (self.w, self.h))
 

@@ -83,12 +83,18 @@ class LumenApp:
         obs = cam.latest()
         if obs.seq != self._seq:
             self._seq = obs.seq
-            self._cam_view.hand = obs.landmarks is not None
+            self._cam_view.hand = (
+             bool(obs.hands) if obs.hands is not None
+             else obs.landmarks is not None
+)
             if obs.preview is not None:
                 h, w = obs.preview.shape[:2]
                 self._cam_view.preview = pygame.image.frombuffer(obs.preview.tobytes(), (w, h), "RGB")
             if not self.mouse_mode:
-                self.engine.feed_hand(obs.landmarks, obs.t, obs.aspect)
+                if obs.hands is not None:
+                    self.engine.feed_hands(obs.hands, obs.t, obs.aspect)
+                else:
+                    self.engine.feed_hand(obs.landmarks, obs.t, obs.aspect)
 
     def _feed_mouse(self, now: float) -> None:
         pos = pygame.mouse.get_pos()
