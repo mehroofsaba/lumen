@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pygame
 
 from . import config as C
-from .engine import LumenEngine, Mode
+from .engine import HandMode, LumenEngine, Mode
 from .gestures import Gesture
 from .render import Renderer
 from .ui import Hud
@@ -115,6 +115,10 @@ class LumenApp:
             elif k == pygame.K_h:
                 self.hud.show_help = not self.hud.show_help
                 self._help_dismissed = True
+            elif k == pygame.K_1:
+                self.engine.set_hand_mode(HandMode.SINGLE)
+            elif k == pygame.K_2:
+                self.engine.set_hand_mode(HandMode.DUAL)
             elif k == pygame.K_m:
                 self.engine.toggle_mode()
             elif k in (pygame.K_e, pygame.K_SPACE):
@@ -127,10 +131,14 @@ class LumenApp:
                 pygame.display.toggle_fullscreen()
             elif k == pygame.K_s:
                 self._save_picture()
-        elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            mode = self.hud.hit_toggle(e.pos)
-            if mode is not None:
-                self.engine.set_mode(mode)
+            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                mode = self.hud.hit_toggle(e.pos)
+                if mode is not None:
+                    self.engine.set_mode(mode)
+
+                hand_mode = self.hud.hit_hand_toggle(e.pos)
+                if hand_mode is not None:
+                    self.engine.set_hand_mode(hand_mode)
 
     def _save_picture(self) -> None:
         folder = os.path.join(os.path.expanduser("~"), "Pictures")

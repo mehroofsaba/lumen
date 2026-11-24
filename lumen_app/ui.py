@@ -4,7 +4,7 @@ import pygame
 
 from . import config as C
 from .effects import COLOR_TABLE
-from .engine import Mode
+from .engine import HandMode, Mode
 from .gestures import GESTURE_LABELS, Gesture
 
 TEXT = (236, 230, 255)
@@ -61,6 +61,7 @@ class Hud:
         self._panels = {}
         self.show_help = True
         self.toggle_rects = {}
+        self.hand_toggle_rects = {}
 
     # ------------------------------------------------------------------
     def _render(self, font, s: str, color):
@@ -99,7 +100,12 @@ class Hud:
             if rect.collidepoint(pos):
                 return mode
         return None
-
+    def hit_hand_toggle(self, pos):
+        """Returns the HandMode selected by the hand-tracking toggle."""
+        for mode, rect in self.hand_toggle_rects.items():
+            if rect.collidepoint(pos):
+                return mode
+        return None
     # ------------------------------------------------------------------
     def draw(self, screen, engine, cam, fps: float, mouse_mode: bool) -> None:
         w, h = self.w, self.h
@@ -123,7 +129,41 @@ class Hud:
             else:
                 self.text(screen, self.f_body, label, rect.center, DIM, "center", shadow=False)
         self.text(screen, self.f_tiny, "drawing mode  (M)", (w - 36, 74), DIM, "topright")
+                # Hand tracking toggle
+        hand_seg_w, hand_seg_h = 116, 34
+        hand_x0 = w - 36 - hand_seg_w * 2
 
+        self.panel(
+            screen,
+            pygame.Rect(hand_x0 - 4, 92, hand_seg_w * 2 + 8, hand_seg_h + 8),
+            alpha=150,
+            radius=20,
+        )
+
+        for i, (mode, label) in enumerate(
+            ((HandMode.SINGLE, "Single"), (HandMode.DUAL, "Dual"))
+        ):
+            rect = pygame.Rect(
+                hand_x0 + i * hand_seg_w, 96, hand_seg_w, hand_seg_h
+            )
+            self.hand_toggle_rects[mode] = rect
+
+            if engine.hand_mode == mode:
+                pygame.draw.rect(screen, accent, rect, border_radius=17)
+                self.text(
+                    screen, self.f_body, label, rect.center,
+                    (24, 14, 44), "center", shadow=False
+                )
+            else:
+                self.text(
+                    screen, self.f_body, label, rect.center,
+                    DIM, "center", shadow=False
+                )
+
+        self.text(
+            screen, self.f_tiny, "hand tracking  (1 / 2)",
+            (w - 36, 136), DIM, "topright"
+        )
         # Effect + gesture panel (bottom left)
         box = pygame.Rect(28, h - 150, 380, 122)
         self.panel(screen, box)

@@ -24,7 +24,9 @@ TWO_PI = 2.0 * math.pi
 class Mode(Enum):
     PERMANENT = "permanent"   # drawings stay and keep shimmering until cleared
     FLEETING = "fleeting"     # trails fade away like real fairy dust
-
+class HandMode(Enum):
+    SINGLE = "single"
+    DUAL = "dual"
 class HandState:
     """Independent tracking and drawing state for one hand."""
 
@@ -62,6 +64,8 @@ class LumenEngine:
             "Left": HandState(),
             "Right": HandState(),
 }
+        self.hand_mode = HandMode.SINGLE
+        self._single_hand_label = None
 # Temporary compatibility bridge for the existing single-hand pipeline.
         right_hand = self.hands["Right"]
         self.gestures = right_hand.gestures
@@ -130,6 +134,31 @@ class LumenEngine:
 
     def toggle_mode(self) -> None:
         self.set_mode(Mode.FLEETING if self.mode == Mode.PERMANENT else Mode.PERMANENT)
+
+    def set_hand_mode(self, mode: HandMode) -> None:
+        if mode == self.hand_mode:
+            return
+    
+        # Reset both hands safely when changing tracking modes.
+        for hand in self.hands.values():
+            self._lose_tracked_hand(hand)
+    
+        self._single_hand_label = None
+        self.hand_mode = mode
+    
+        self.toast(
+            "Single-hand tracking"
+            if mode == HandMode.SINGLE
+            else "Dual-hand tracking"
+        )
+    
+
+    def toggle_hand_mode(self) -> None:
+        self.set_hand_mode(
+          HandMode.DUAL
+          if self.hand_mode == HandMode.SINGLE
+          else HandMode.SINGLE
+      )
 
     def toggle_pause(self) -> None:
         self.paused = not self.paused
@@ -200,6 +229,22 @@ class LumenEngine:
     def feed_hands(self, hands: list, t: float, aspect: Optional[float] = None) -> None:
         """Process independently tracked left and right hands."""
         self._multi_hand_input = True
+        if self.hand_mode == HandMode.SINGLE:
+            if self._single_hand_label is None:
+                self._single_hand_label = next(
+                    (
+                        item["label"]
+                        for item in hands
+                        if item.get("label") in self.hands
+                    ),
+                    None,
+                )
+
+            if self._single_hand_label is not None:
+                hands = [
+                    item for item in hands
+                    if item.get("label") == self._single_hand_label
+                ]
         for item in hands:
             label = item.get("label")
             if label not in self.hands:
@@ -316,6 +361,8 @@ class LumenEngine:
         hand.fist_progress = 0.0
         hand.cursor_vel[:] = 0.0
         hand.last_obs_t = None
+        if self._single_hand_label in self.hands and self.hands[self._single_hand_label] is hand:
+            self._single_hand_label = None
         self._end_stroke(hand=hand)
 
         self.hand_visible = any(state.visible for state in self.hands.values())
