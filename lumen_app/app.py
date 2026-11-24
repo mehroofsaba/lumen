@@ -167,8 +167,9 @@ class LumenApp:
 
                 self.engine.update(dt, now)
 
-                # Fade the help card away once the person has started drawing.
-                if self.hud.show_help and not self._help_dismissed and self.engine.has_drawn:
+                # Dismiss the quick guide as soon as the camera detects a hand.
+                # This avoids requiring the user to start drawing just to clear the overlay.
+                if self.hud.show_help and self._cam_view.hand:
                     self.hud.show_help = False
 
                 self.renderer.draw(self.screen, self.engine, dt, self.engine.t)
