@@ -143,18 +143,25 @@ class Renderer:
         vis = data["bright"] > 0.05
         if not vis.any():
             return
-        x = data["x"][vis].astype(np.int64).tolist()
-        y = data["y"][vis].astype(np.int64).tolist()
-        col = data["color"][vis].tolist()
-        star = data["star"][vis].tolist()
-        sb = np.minimum(np.searchsorted(SIZE_RADII, data["size"][vis]), N_SIZE - 1).tolist()
-        bb = np.clip((data["bright"][vis] * N_BRIGHT).astype(np.int64), 0, N_BRIGHT - 1).tolist()
+        # Keep particle attributes in NumPy arrays until the blit list is built.
+        # Converting every masked array to Python lists creates several large
+        # temporary objects on every frame, especially in dual-hand mode.
+        indices = np.flatnonzero(vis)
+        sizes = np.minimum(np.searchsorted(SIZE_RADII, data["size"]), N_SIZE - 1)
+        brightness = np.clip(
+            (data["bright"] * N_BRIGHT).astype(np.int64), 0, N_BRIGHT - 1
+        )
 
         items = []
+        append = items.append
         sprite = self._sprite
-        for px, py, c, s, b, st in zip(x, y, col, sb, bb, star):
-            surf, half = sprite(c, s, b, st)
-            items.append((surf, (px - half, py - half)))
+        xs, ys = data["x"], data["y"]
+        colors, stars = data["color"], data["star"]
+        for i in indices:
+            surf, half = sprite(
+                int(colors[i]), int(sizes[i]), int(brightness[i]), bool(stars[i])
+            )
+            append((surf, (int(xs[i]) - half, int(ys[i]) - half)))
         self._blit_add(screen, items)
 
     def _draw_cursor(self, screen, engine, t: float) -> None:
