@@ -83,10 +83,13 @@ class LumenApp:
         obs = cam.latest()
         if obs.seq != self._seq:
             self._seq = obs.seq
-            self._cam_view.hand = (
-             bool(obs.hands) if obs.hands is not None
-             else obs.landmarks is not None
-)
+            # Use either representation as a positive detection signal.
+            # Some detector backends may populate landmarks before the hand list.
+            hand_detected = bool(obs.hands) or obs.landmarks is not None
+            self._cam_view.hand = hand_detected
+            if hand_detected and self.hud.show_help:
+                self.hud.show_help = False
+
             if obs.preview is not None:
                 h, w = obs.preview.shape[:2]
                 self._cam_view.preview = pygame.image.frombuffer(obs.preview.tobytes(), (w, h), "RGB")
@@ -166,11 +169,6 @@ class LumenApp:
                     self._feed_mouse(now)
 
                 self.engine.update(dt, now)
-
-                # Dismiss the quick guide as soon as the camera detects a hand.
-                # This avoids requiring the user to start drawing just to clear the overlay.
-                if self.hud.show_help and self._cam_view.hand:
-                    self.hud.show_help = False
 
                 self.renderer.draw(self.screen, self.engine, dt, self.engine.t)
                 self.hud.draw(self.screen, self.engine,
