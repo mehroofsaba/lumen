@@ -9,7 +9,7 @@ import numpy as np
 
 from lumen_app import config as C
 from lumen_app.effects import COLOR_TABLE, EFFECTS, pick_colors
-from lumen_app.engine import LumenEngine, Mode
+from lumen_app.engine import HandMode, LumenEngine, Mode
 from lumen_app.gestures import Gesture, GestureEngine
 from lumen_app.particles import ANCHOR, DUST, ParticleSystem
 from lumen_app.smoothing import OneEuroFilter
@@ -217,6 +217,145 @@ def test_toggle_mode_roundtrip():
     e.toggle_mode(); e.toggle_mode()
     assert e.mode == start
 
+def test_hand_mode_switch_preserves_existing_artwork():
+    e = LumenEngine(seed=7)
+    e.set_mode(Mode.PERMANENT)
+
+    draw_circle(e, 1.5)
+    anchors_before = e.particles.anchor_count()
+    assert anchors_before > 0
+
+    e.set_hand_mode(HandMode.DUAL)
+    assert e.hand_mode == HandMode.DUAL
+    assert e.particles.anchor_count() == anchors_before
+
+    e.set_hand_mode(HandMode.SINGLE)
+    assert e.hand_mode == HandMode.SINGLE
+    assert e.particles.anchor_count() == anchors_before
+
+def test_dual_hand_tracking_keeps_hand_states_independent():
+    e = LumenEngine(seed=8)
+    e.set_hand_mode(HandMode.DUAL)
+
+    left = make_hand(ext=(1, 0, 0, 0), tip=(0.3, 0.4))
+    right = make_hand(ext=(1, 0, 0, 0), tip=(0.7, 0.4))
+
+    hands = [
+        {"label": "Left", "landmarks": left},
+        {"label": "Right", "landmarks": right},
+    ]
+
+    for i in range(20):
+        t = i * DT
+        e.feed_hands(hands, t, aspect=1.0)
+        e.update(DT, t)
+
+    assert e.hands["Left"].visible
+    assert e.hands["Right"].visible
+    assert e.hands["Left"].drawing
+    assert e.hands["Right"].drawing
+    assert e.drawing    
+
+def test_dual_hand_loss_does_not_interrupt_other_hand():
+    e = LumenEngine(seed=9)
+    e.set_hand_mode(HandMode.DUAL)
+
+    left = make_hand(tip=(0.3, 0.4))
+    right = make_hand(tip=(0.7, 0.4))
+
+    both_hands = [
+        {"label": "Left", "landmarks": left},
+        {"label": "Right", "landmarks": right},
+    ]
+
+    for i in range(20):
+        t = i * DT
+        e.feed_hands(both_hands, t, aspect=1.0)
+        e.update(DT, t)
+
+    assert e.hands["Left"].drawing
+    assert e.hands["Right"].drawing
+
+    # Only the right hand remains visible.
+    # Keep sending fresh observations for it while the left hand is missing.
+    for i in range(int(C.HAND_LOST_GRACE / DT) + 4):
+        t += DT
+        e.feed_hands(
+            [{"label": "Right", "landmarks": right}],
+            t,
+            aspect=1.0,
+        )
+        e.update(DT, t)
+
+    assert not e.hands["Left"].visible
+    assert not e.hands["Left"].drawing
+    assert e.hands["Right"].visible
+    assert e.hands["Right"].drawing
+    assert e.drawing    
+
+def test_single_hand_mode_keeps_selected_hand_locked():
+    e = LumenEngine(seed=10)
+    e.set_hand_mode(HandMode.SINGLE)
+
+    left = make_hand(tip=(0.3, 0.4))
+    right = make_hand(tip=(0.7, 0.4))
+
+    # Left is detected first, so it should be selected.
+    e.feed_hands(
+        [
+            {"label": "Left", "landmarks": left},
+            {"label": "Right", "landmarks": right},
+        ],
+        0.0,
+        aspect=1.0,
+    )
+
+    assert e._single_hand_label == "Left"
+
+    # Detection order changes, but selection should remain Left.
+    e.feed_hands(
+        [
+            {"label": "Right", "landmarks": right},
+            {"label": "Left", "landmarks": left},
+        ],
+        DT,
+        aspect=1.0,
+    )
+
+    assert e._single_hand_label == "Left"
+    assert e.hands["Left"].visible
+    assert not e.hands["Right"].visible
+
+def test_single_hand_mode_reacquires_other_hand_after_timeout():
+    e = LumenEngine(seed=11)
+    e.set_hand_mode(HandMode.SINGLE)
+
+    left = make_hand(tip=(0.3, 0.4))
+    right = make_hand(tip=(0.7, 0.4))
+
+    e.feed_hands(
+        [{"label": "Left", "landmarks": left}],
+        0.0,
+        aspect=1.0,
+    )
+    assert e._single_hand_label == "Left"
+
+    # Let the selected hand disappear beyond the grace period.
+    e.update(0.016, C.HAND_LOST_GRACE + 0.2)
+
+    assert not e.hands["Left"].visible
+    assert e._single_hand_label is None
+
+    # The right hand appears and should now be selected.
+    t = C.HAND_LOST_GRACE + 0.2 + DT
+    e.feed_hands(
+        [{"label": "Right", "landmarks": right}],
+        t,
+        aspect=1.0,
+    )
+
+    assert e._single_hand_label == "Right"
+    assert e.hands["Right"].visible    
 
 def test_pinch_toggles_pause_once_per_pinch():
     e = LumenEngine(seed=1)
