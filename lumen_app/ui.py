@@ -116,16 +116,16 @@ class Hud:
         accent = COLOR_TABLE[fx.color_ids[0]]
 
         # Drawing style selector
-        seg_w, seg_h = 132, 38
+        seg_w, seg_h = 108, 32
         x0 = w - 36 - seg_w * 2
-        self.text(screen, self.f_tiny, "DRAWING STYLE", (x0, 18), MUTED)
-        self.panel(screen, pygame.Rect(x0 - 5, 35, seg_w * 2 + 10, seg_h + 8),
+        self.text(screen, self.f_tiny, "DRAWING STYLE", (x0, 16), MUTED)
+        self.panel(screen, pygame.Rect(x0 - 4, 31, seg_w * 2 + 8, seg_h + 6),
                    alpha=178, radius=23)
         self.toggle_rects.clear()
         for i, (mode, label) in enumerate(
             ((Mode.PERMANENT, "Permanent"), (Mode.FLEETING, "Fleeting"))
         ):
-            rect = pygame.Rect(x0 + i * seg_w, 39, seg_w, seg_h)
+            rect = pygame.Rect(x0 + i * seg_w, 34, seg_w, seg_h)
             self.toggle_rects[mode] = rect
             if engine.mode == mode:
                 pygame.draw.rect(screen, accent, rect, border_radius=19)
@@ -134,26 +134,26 @@ class Hud:
             else:
                 self.text(screen, self.f_body, label, rect.center, DIM, "center")
         self.text(screen, self.f_tiny, "M  TO SWITCH",
-                  (w - 40, 86), MUTED, "topright")
+                  (w - 40, 72), MUTED, "topright")
 
         # Hand tracking selector
-        hand_seg_w, hand_seg_h = 116, 52
+        hand_seg_w, hand_seg_h = 100, 44
         hand_x0 = w - 36 - hand_seg_w * 2
-        self.text(screen, self.f_tiny, "HAND TRACKING", (hand_x0, 105), MUTED)
-        self.panel(screen, pygame.Rect(hand_x0 - 5, 122, hand_seg_w * 2 + 10,
-                                        hand_seg_h + 8), alpha=178, radius=24)
+        self.text(screen, self.f_tiny, "HAND TRACKING", (hand_x0, 91), MUTED)
+        self.panel(screen, pygame.Rect(hand_x0 - 4, 108, hand_seg_w * 2 + 8,
+                                        hand_seg_h + 6), alpha=178, radius=21)
         self.hand_toggle_rects.clear()
         for i, (mode, label) in enumerate(
             ((HandMode.SINGLE, "Single"), (HandMode.DUAL, "Dual"))
         ):
-            rect = pygame.Rect(hand_x0 + i * hand_seg_w, 126, hand_seg_w, hand_seg_h)
+            rect = pygame.Rect(hand_x0 + i * hand_seg_w, 111, hand_seg_w, hand_seg_h)
             self.hand_toggle_rects[mode] = rect
             if engine.hand_mode == mode:
                 pygame.draw.rect(screen, accent, rect, border_radius=17)
                 self.text(screen, self.f_body, label,
-                          (rect.centerx, rect.y + 17), (17, 19, 25), "center")
+                          (rect.centerx, rect.y + 14), (17, 19, 25), "center")
                 self.text(screen, self.f_tiny, str(i + 1),
-                          (rect.centerx, rect.y + 38), (17, 19, 25), "center")
+                          (rect.centerx, rect.y + 33), (17, 19, 25), "center")
             else:
                 self.text(screen, self.f_body, label,
                           (rect.centerx, rect.y + 17), DIM, "center")
@@ -176,22 +176,22 @@ class Hud:
 
     def _draw_effect(self, screen, engine, mouse_mode: bool, accent) -> None:
         fx = engine.effect
-        box = pygame.Rect(28, self.h - 174, 370, 146)
+        box = pygame.Rect(28, self.h - 154, 326, 126)
         self.panel(screen, box, alpha=204, radius=20)
         self.text(screen, self.f_tiny, "CURRENT EFFECT",
-                  (box.x + 20, box.y + 14), MUTED)
+                  (box.x + 16, box.y + 10), MUTED)
         self.text(screen, self.f_tiny, "TWO FINGERS  /  E",
-                  (box.right - 20, box.y + 14), MUTED, "topright")
-        self.text(screen, self.f_big, fx.name, (box.x + 20, box.y + 34), TEXT)
-        self.text(screen, self.f_small, fx.blurb, (box.x + 22, box.y + 70), DIM)
+                  (box.right - 16, box.y + 10), MUTED, "topright")
+        self.text(screen, self.f_big, fx.name, (box.x + 16, box.y + 25), TEXT)
+        self.text(screen, self.f_small, fx.blurb, (box.x + 17, box.y + 52), DIM)
 
         for i, cid in enumerate(fx.color_ids[:12]):
             pygame.draw.circle(screen, COLOR_TABLE[cid],
-                               (box.x + 27 + i * 19, box.y + 105), 5)
+                               (box.x + 22 + i * 17, box.y + 77), 4)
         pygame.draw.line(screen, (48, 58, 77),
-                         (box.x + 20, box.y + 119), (box.right - 20, box.y + 119), 1)
+                         (box.x + 16, box.y + 88), (box.right - 16, box.y + 88), 1)
         self.text(screen, self.f_tiny, self._status_text(engine, mouse_mode),
-                  (box.x + 20, box.y + 126), accent)
+                  (box.x + 16, box.y + 96), accent)
 
     def _status_text(self, engine, mouse_mode: bool) -> str:
         if not engine.hand_visible:
