@@ -131,14 +131,14 @@ class LumenApp:
                 pygame.display.toggle_fullscreen()
             elif k == pygame.K_s:
                 self._save_picture()
-            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-                mode = self.hud.hit_toggle(e.pos)
-                if mode is not None:
-                    self.engine.set_mode(mode)
+        elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            mode = self.hud.hit_toggle(e.pos)
+            if mode is not None:
+                self.engine.set_mode(mode)
 
-                hand_mode = self.hud.hit_hand_toggle(e.pos)
-                if hand_mode is not None:
-                    self.engine.set_hand_mode(hand_mode)
+            hand_mode = self.hud.hit_hand_toggle(e.pos)
+            if hand_mode is not None:
+                self.engine.set_hand_mode(hand_mode)
 
     def _save_picture(self) -> None:
         folder = os.path.join(os.path.expanduser("~"), "Pictures")
