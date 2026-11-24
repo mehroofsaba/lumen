@@ -61,7 +61,7 @@ class Renderer:
         self._stars = [
             (int(rng.integers(0, self.w)), int(rng.integers(0, self.h)),
              float(rng.uniform(0, 6.28)), float(rng.uniform(0.6, 2.2)), int(rng.choice([1, 1, 1, 2])))
-            for _ in range(90)
+            for _ in range(118)
         ]
 
     # ------------------------------------------------------------------
@@ -74,10 +74,10 @@ class Renderer:
         h, w = self.h, self.w
         y = np.linspace(0.0, 1.0, h)[:, None]
         x = np.linspace(-1.0, 1.0, w)[None, :]
-        top = np.array([9.0, 7.0, 26.0])
-        bottom = np.array([27.0, 11.0, 46.0])
+        top = np.array([5.0, 7.0, 13.0])
+        bottom = np.array([10.0, 13.0, 24.0])
         grad = top * (1.0 - y[..., None]) + bottom * y[..., None]            # (h,1,3)
-        vignette = 1.0 - 0.38 * ((x ** 2 + (y * 2 - 1) ** 2) / 2.0)          # (h,w)
+        vignette = 1.0 - 0.30 * ((x ** 2 + (y * 2 - 1) ** 2) / 2.0)          # (h,w)
         arr = np.clip(grad * vignette[..., None], 0, 255).astype(np.uint8)    # (h,w,3)
         return pygame.image.frombuffer(arr.tobytes(), (w, h), "RGB").convert()
 
@@ -133,7 +133,7 @@ class Renderer:
     def _draw_stars(self, screen, t: float) -> None:
         for x, y, ph, sp, r in self._stars:
             b = 0.30 + 0.70 * (0.5 + 0.5 * math.sin(t * sp + ph))
-            c = int(140 * b)
+            c = int(105 * b + 32)
             pygame.draw.circle(screen, (c, c, min(255, c + 45)), (x, y), r)
 
     def _draw_particles(self, screen, engine, t: float) -> None:
