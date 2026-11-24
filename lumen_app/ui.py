@@ -59,7 +59,6 @@ class Hud:
 
     def __init__(self, size):
         self.w, self.h = size
-        self.f_title = _font(54, True)
         self.f_big = _font(28, True)
         self.f_body = _font(18)
         self.f_small = _font(15)
@@ -116,14 +115,6 @@ class Hud:
         fx = engine.effect
         accent = COLOR_TABLE[fx.color_ids[0]]
 
-        # Brand block
-        self.text(screen, self.f_title, "LUMEN", (34, 22), TEXT)
-        pygame.draw.line(screen, (75, 86, 111), (38, 91), (78, 91), 2)
-        self.text(screen, self.f_small, "AN INTERACTIVE FAIRY DUST EXPERIENCE",
-                  (38, 101), DIM)
-        self.text(screen, self.f_tiny, "A LITTLE SPACE TO MAKE LIGHT",
-                  (38, 126), MUTED)
-
         # Drawing style selector
         seg_w, seg_h = 132, 38
         x0 = w - 36 - seg_w * 2
@@ -146,11 +137,11 @@ class Hud:
                   (w - 40, 86), MUTED, "topright")
 
         # Hand tracking selector
-        hand_seg_w, hand_seg_h = 116, 34
+        hand_seg_w, hand_seg_h = 116, 52
         hand_x0 = w - 36 - hand_seg_w * 2
         self.text(screen, self.f_tiny, "HAND TRACKING", (hand_x0, 105), MUTED)
         self.panel(screen, pygame.Rect(hand_x0 - 5, 122, hand_seg_w * 2 + 10,
-                                        hand_seg_h + 8), alpha=178, radius=21)
+                                        hand_seg_h + 8), alpha=178, radius=24)
         self.hand_toggle_rects.clear()
         for i, (mode, label) in enumerate(
             ((HandMode.SINGLE, "Single"), (HandMode.DUAL, "Dual"))
@@ -159,12 +150,15 @@ class Hud:
             self.hand_toggle_rects[mode] = rect
             if engine.hand_mode == mode:
                 pygame.draw.rect(screen, accent, rect, border_radius=17)
-                self.text(screen, self.f_body, label, rect.center,
-                          (17, 19, 25), "center")
+                self.text(screen, self.f_body, label,
+                          (rect.centerx, rect.y + 17), (17, 19, 25), "center")
+                self.text(screen, self.f_tiny, str(i + 1),
+                          (rect.centerx, rect.y + 38), (17, 19, 25), "center")
             else:
-                self.text(screen, self.f_body, label, rect.center, DIM, "center")
-        self.text(screen, self.f_tiny, "1  SINGLE     2  DUAL",
-                  (w - 40, 170), MUTED, "topright")
+                self.text(screen, self.f_body, label,
+                          (rect.centerx, rect.y + 17), DIM, "center")
+                self.text(screen, self.f_tiny, str(i + 1),
+                          (rect.centerx, rect.y + 38), MUTED, "center")
 
         self._draw_effect(screen, engine, mouse_mode, accent)
         self._draw_camera(screen, cam, fps, mouse_mode)
@@ -182,7 +176,7 @@ class Hud:
 
     def _draw_effect(self, screen, engine, mouse_mode: bool, accent) -> None:
         fx = engine.effect
-        box = pygame.Rect(28, self.h - 174, 430, 146)
+        box = pygame.Rect(28, self.h - 174, 370, 146)
         self.panel(screen, box, alpha=204, radius=20)
         self.text(screen, self.f_tiny, "CURRENT EFFECT",
                   (box.x + 20, box.y + 14), MUTED)
