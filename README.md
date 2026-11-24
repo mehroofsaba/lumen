@@ -1,111 +1,95 @@
-# LUMEN — an interactive fairy dust experience
+# LUMEN
 
-Draw in the air with your finger and watch your trail turn into shimmering,
-drifting fairy dust. Python + OpenCV + MediaPipe + NumPy + Pygame.
+**An interactive fairy dust experience.**
 
-## 1. Requirements
+LUMEN lets you draw in the air using hand gestures. Your movements become glowing trails, drifting particles and sparkling effects.
 
-- A computer with a webcam (Windows, macOS or Linux)
-- **Python 3.10, 3.11 or 3.12** (recommended; MediaPipe wheels may lag on newer versions)
-- Internet access on first run only (to install packages and, with newer
-  MediaPipe versions, download a ~8 MB hand model once)
+Built with **Python, OpenCV, MediaPipe, NumPy and Pygame**.
 
-## 2. Install and run
+## Features
+
+- Draw in the air using hand tracking.
+- Choose **Single Hand** or **Dual Hand** mode.
+- Switch between **Permanent** and **Fleeting** trails.
+- Explore five particle effects: Stardust, Moonlight, Aurora, Fireflies and Rainbow.
+- Save your artwork as an image.
+- Use mouse controls when a camera is unavailable.
+
+## Get started
+
+### Requirements
+
+- Windows, macOS or Linux
+- Python **3.10–3.12**
+- A webcam for hand tracking
 
 ### Windows
-Double-click `run_windows.bat`, or in a terminal:
 
-    python -m venv .venv
-    .venv\Scripts\activate
-    pip install -r requirements.txt
-    python main.py
+Double-click `run_windows.bat`.
+
+Or run these commands from the project folder:
+
+```bash
+python -m venv .venv
+.venv\\Scripts\\activate
+pip install -r requirements.txt
+python main.py
+```
 
 ### macOS / Linux
-    chmod +x run_unix.sh
-    ./run_unix.sh
 
-or manually:
+```bash
+chmod +x run_unix.sh
+./run_unix.sh
+```
 
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    python main.py
+The first launch needs an internet connection to install dependencies and, if required by your MediaPipe version, download the hand-tracking model.
 
-macOS: allow camera access for Terminal when prompted (System Settings →
-Privacy & Security → Camera), then run again.
+## How to use LUMEN
 
-### No camera? Try it with the mouse
-    python main.py --mouse
-
-Left button draws, right button scatters dust.
-
-### Options
-    python main.py --camera 1        use a different camera
-    python main.py --fullscreen      start fullscreen
-    python main.py --mode fleeting   start in fleeting-trail mode
-    python main.py --model PATH      use a local hand_landmarker.task file
-    python main.py --no-help         hide the controls card at startup
-
-## 3. Controls
+Show your hand to the camera and use these gestures:
 
 | Gesture | Action |
 |---|---|
 | Index finger up | Draw |
-| Pinch (thumb + index) | Pause / resume drawing |
-| Open palm | Scatter fairy dust |
-| Fist (hold ~0.6 s) | Clear the canvas |
-| Two fingers (hold ~0.3 s) | Change particle effect |
+| Pinch thumb and index finger | Pause or resume |
+| Open palm | Scatter particles |
+| Hold a fist | Clear the canvas |
+| Two fingers | Change particle effect |
 
-Keyboard: `M` mode · `E` effect · `P` pause · `C` clear · `S` save picture ·
-`F` fullscreen · `H` help · `Esc` quit. You can also click the
-Permanent / Fleeting switch at the top right.
+### Keyboard shortcuts
 
-### The big decision: Permanent vs Fleeting
-- **Permanent** — your drawing stays on the canvas, glowing, with twinkling
-  stars that keep shimmering until you clear it.
-- **Fleeting** — the dust drifts, swirls and fades away, leaving nothing behind.
+| Key | Action |
+|---|---|
+| `1` / `2` | Single / Dual Hand |
+| `M` | Switch Permanent / Fleeting |
+| `E` | Change particle effect |
+| `P` | Pause or resume |
+| `C` | Clear the canvas |
+| `S` | Save your artwork |
+| `F` | Toggle fullscreen |
+| `H` | Show or hide the quick guide |
+| `Esc` | Quit |
 
-Toggle any time with `M` or the on-screen switch.
+You can also use the on-screen controls to change drawing style and hand-tracking mode.
 
-## 4. Tuning
+## No webcam?
 
-Everything is in `lumen_app/config.py`:
-- Jitter vs. lag: `SMOOTH_MIN_CUTOFF` (lower = smoother), `SMOOTH_BETA` (higher = less lag)
-- Hand travel needed to reach the screen edges: `ACTIVE_MARGIN_X/Y`
-- Gesture sensitivity and hold times: `EXTEND_*`, `PINCH_*`, `*_DWELL`, `FIST_HOLD`
-- Pinch behaviour: `PINCH_MODE = "toggle"` or `"hold"`
-- Amount of dust and sparkle: `MAX_PARTICLES`, `ANCHOR_PROB`, `SCATTER_RATE`
-- New effects: add an `Effect(...)` to the list in `lumen_app/effects.py`
+Start LUMEN in mouse mode:
 
-If it runs slowly, lower `MAX_PARTICLES` and `MAX_ANCHORS`.
+```bash
+python main.py --mouse
+```
 
-## 5. Tips for good tracking
-- Face a window or lamp; avoid strong light behind you.
-- Keep your hand ~40–80 cm from the camera, palm facing it.
-- Draw with only the index finger extended; curl the others firmly.
+- Hold the **left mouse button** to draw.
+- Hold the **right mouse button** to scatter particles.
 
-## 6. Package as a desktop app
+## Troubleshooting
 
-    pip install -r requirements-build.txt
-    python build.py
+- **Camera not found:** Close other apps using the webcam, check camera permissions, or try `python main.py --camera 1`.
+- **Hand not detected:** Improve the lighting, face the camera and keep your hand clearly in view.
+- **MediaPipe installation fails:** Use Python 3.10, 3.11 or 3.12.
 
-The app appears in `dist/LUMEN/`. Build on each OS you want to target
-(PyInstaller does not cross-compile). If your MediaPipe version needs the
-separate model file, `build.py` bundles it when `models/hand_landmarker.task`
-exists; otherwise the app downloads it on first launch.
+---
 
-## 7. Tests
-
-    python -m tests.test_core
-
-Covers gestures, smoothing, strokes, particles and both drawing modes without
-needing a camera or window.
-
-## 8. Troubleshooting
-- **"Could not open camera"** — close other apps using it, check OS camera
-  permission, try `--camera 1`.
-- **"Could not download the hand model"** — download
-  https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
-  and save it as `models/hand_landmarker.task`.
-- **MediaPipe won't install** — use Python 3.10–3.12.
-- **Gestures misfire** — adjust thresholds in `config.py`, improve lighting.
+Made with curiosity, code and a little fairy dust. ✨
