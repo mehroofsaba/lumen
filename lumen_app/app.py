@@ -87,9 +87,6 @@ class LumenApp:
             # Some detector backends may populate landmarks before the hand list.
             hand_detected = bool(obs.hands) or obs.landmarks is not None
             self._cam_view.hand = hand_detected
-            if hand_detected and self.hud.show_help:
-                self.hud.show_help = False
-
             if obs.preview is not None:
                 h, w = obs.preview.shape[:2]
                 self._cam_view.preview = pygame.image.frombuffer(obs.preview.tobytes(), (w, h), "RGB")
@@ -165,6 +162,11 @@ class LumenApp:
                     self._handle_event(e)
 
                 self._poll_camera()
+                # The camera HUD and guide use the same main-loop hand state.
+                # Dismiss the guide immediately after each camera poll.
+                if self._cam_view.hand:
+                    self.hud.show_help = False
+
                 if self.mouse_mode:
                     self._feed_mouse(now)
 
