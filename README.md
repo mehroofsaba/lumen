@@ -92,4 +92,4 @@ python main.py --mouse
 
 ---
 
-Made with curiosity, code and a little fairy dust. ✨
+Made with curiosity, code and a little fairy dust. 
