@@ -15,7 +15,7 @@ from .ui import Hud
 
 
 def parse_args(argv=None):
-    p = argparse.ArgumentParser(prog="lumen", description="LUMEN - an interactive fairy dust experience")
+    p = argparse.ArgumentParser(prog="lumen", description="LUMEN-an interactive fairy dust experience")
     p.add_argument("--camera", type=int, default=C.CAMERA_INDEX, help="camera index (default 0)")
     p.add_argument("--mouse", action="store_true", help="skip the camera; draw with the mouse")
     p.add_argument("--fullscreen", action="store_true", help="start fullscreen")
